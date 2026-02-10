@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portmonote - Port Memory</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        gray: {
+                            900: '#121212',
+                            800: '#1e1e1e',
+                            700: '#2d2d2d',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .card-enter-active, .card-leave-active { transition: all 0.5s ease; }
+        .card-enter-from, .card-leave-to { opacity: 0; transform: translateY(20px); }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200 font-sans antialiased">
+    <div id="app" class="min-h-screen p-6">
+        
+        <!-- Header -->
+        <header class="max-w-7xl mx-auto mb-8 flex justify-between items-center border-b border-gray-700 pb-4">
+            <div>
+                <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-teal-400">
+                    Portmonote
+                </h1>
+                <p class="text-gray-500 text-sm mt-1">Service Presence & Memory</p>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <span v-if="loading" class="text-yellow-400 text-sm animate-pulse">Updating...</span>
+                <span v-else class="text-green-500 text-sm">Live</span>
+                <button @click="fetchData" class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded border border-gray-600 text-sm transition">
+                    Refresh
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Grid -->
+        <main class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            
+            <div v-for="port in sortedPorts" :key="port.protocol + '-' + port.port" 
+                 class="bg-gray-800 rounded-xl p-5 border shadow-lg hover:shadow-xl transition-shadow duration-300 relative group"
+                 :class="statusBorder(port.derived_status)">
+                
+                <!-- Status Indicator & Title -->
+                <div class="flex justify-between items-start mb-3">
+                    <div class="bg-gray-900 rounded px-2 py-1 text-xs font-mono text-gray-400 border border-gray-700">
+                        {{ port.port }} / {{ port.protocol.toUpperCase() }}
+                    </div>
+                    <div class="flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-bold" 
+                         :class="statusBadge(port.derived_status)">
+                        <span class="w-2 h-2 rounded-full" :class="statusDot(port.derived_status)"></span>
+                        {{ port.derived_status.toUpperCase() }}
+                    </div>
+                </div>
+
+                <!-- Process Info -->
+                <div class="mb-4">
+                    <h2 class="text-lg font-bold text-white truncate" :title="port.process_name || 'Unknown Process'">
+                        {{ port.process_name || 'Unknown' }}
+                    </h2>
+                    <p class="text-xs text-gray-500 font-mono truncate" :title="port.cmdline">
+                        {{ port.cmdline || '-' }}
+                    </p>
+                </div>
+
+                <!-- Memory / Note Section -->
+                <div class="mb-4" v-if="port.title || port.description || port.owner">
+                    <h3 class="text-blue-300 font-medium text-sm mb-1">{{ port.title || 'Untitled Service' }}</h3>
+                    <p class="text-gray-400 text-xs leading-relaxed line-clamp-2" :title="port.description">
+                        {{ port.description || 'No description provided.' }}
+                    </p>
+                </div>
+                <div v-else class="mb-4 py-2 border-2 border-dashed border-gray-700 rounded text-center cursor-pointer hover:border-gray-500 transition" @click="editNote(port)">
+                    <span class="text-xs text-gray-600">+ Add Memory</span>
+                </div>
+
+                <!-- Meta Info -->
+                <div class="flex justify-between items-end border-t border-gray-700 pt-3 mt-auto">
+                    <div class="flex flex-col">
+                        <span class="text-[10px] text-gray-500 uppercase tracking-wider">Owner</span>
+                        <span class="text-xs text-gray-300">{{ port.owner || 'Unknown' }}</span>
+                    </div>
+                    <div class="flex flex-col items-end">
+                        <span class="text-[10px] text-gray-500 uppercase tracking-wider">Uptime</span>
+                        <span class="text-xs text-gray-300">{{ port.uptime_human || '-' }}</span>
+                    </div>
+                </div>
+                
+                <div v-if="port.first_seen_at" class="mt-2 text-[10px] text-gray-600 text-right">
+                    First seen: {{ formatDate(port.first_seen_at) }}
+                </div>
+                
+                <!-- Hover Action -->
+                <button @click="editNote(port)" class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-700 rounded text-gray-400 transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                </button>
+            </div>
+        </main>
+
+        <!-- Edit Modal -->
+        <div v-if="editingPort" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center p-4 z-50">
+            <div class="bg-gray-800 rounded-lg max-w-md w-full p-6 shadow-2xl border border-gray-700">
+                <h3 class="text-xl font-bold mb-4">Edit Memory</h3>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">Title</label>
+                        <input v-model="editForm.title" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white focus:border-blue-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">Description</label>
+                        <textarea v-model="editForm.description" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white focus:border-blue-500 outline-none h-20"></textarea>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">Owner</label>
+                        <input v-model="editForm.owner" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white focus:border-blue-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">Risk Level</label>
+                        <select v-model="editForm.risk_level" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white focus:border-blue-500 outline-none">
+                            <option value="expected">Expected</option>
+                            <option value="trusted">Trusted</option>
+                            <option value="suspicious">__Suspicious__</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="mt-6 flex justify-end gap-3">
+                    <button @click="editingPort = null" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm transition">Cancel</button>
+                    <button @click="saveNote" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm font-bold transition">Save Memory</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                const ports = ref([]);
+                const loading = ref(false);
+                const editingPort = ref(null);
+                const editForm = ref({});
+
+                const sortedPorts = computed(() => {
+                    return [...ports.value].sort((a, b) => {
+                        // Priority: Suspicious > Ghost > Active > Disappeared
+                        const score = (s) => {
+                            if (s === 'suspicious') return 4;
+                            if (s === 'flapping') return 3;
+                            if (s === 'ghost') return 2;
+                            if (s === 'healthy') return 1;
+                            return 0;
+                        };
+                        return score(b.derived_status) - score(a.derived_status);
+                    });
+                });
+
+                const fetchData = async () => {
+                    loading.value = true;
+                    try {
+                        const res = await fetch('/ports');
+                        if(res.ok) ports.value = await res.json();
+                    } catch (e) {
+                        console.error(e);
+                    } finally {
+                        loading.value = false;
+                    }
+                };
+
+                const statusBorder = (status) => {
+                    switch(status) {
+                        case 'healthy': return 'border-gray-700 hover:border-green-800';
+                        case 'suspicious': return 'border-red-900 hover:border-red-600 shadow-red-900/20';
+                        case 'ghost': return 'border-gray-600 opacity-60';
+                        case 'flapping': return 'border-yellow-700';
+                        default: return 'border-gray-700';
+                    }
+                };
+
+                const statusBadge = (status) => {
+                     switch(status) {
+                        case 'healthy': return 'bg-green-900/30 text-green-400';
+                        case 'suspicious': return 'bg-red-900/30 text-red-400';
+                         case 'ghost': return 'bg-gray-700 text-gray-400';
+                        case 'flapping': return 'bg-yellow-900/30 text-yellow-400';
+                        default: return 'bg-gray-800 text-gray-500';
+                    }
+                };
+
+                const statusDot = (status) => {
+                     switch(status) {
+                        case 'healthy': return 'bg-green-400';
+                        case 'suspicious': return 'bg-red-500 animate-pulse';
+                         case 'ghost': return 'bg-gray-400';
+                        case 'flapping': return 'bg-yellow-400';
+                        default: return 'bg-gray-500';
+                    }
+                }
+
+                const formatDate = (str) => {
+                    if(!str) return '';
+                    return new Date(str).toLocaleDateString();
+                }
+
+                const editNote = (port) => {
+                    editingPort.value = port;
+                    editForm.value = {
+                        title: port.title || '',
+                        description: port.description || '',
+                        owner: port.owner || '',
+                        risk_level: port.risk_level || 'expected'
+                    };
+                };
+
+                const saveNote = async () => {
+                    if (!editingPort.value) return;
+                    const p = editingPort.value;
+                    try {
+                        const url = `/notes?host_id=${p.host_id}&protocol=${p.protocol}&port=${p.port}`;
+                        const res = await fetch(url, {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(editForm.value)
+                        });
+                        if (res.ok) {
+                            fetchData(); // Refresh to see updates
+                            editingPort.value = null;
+                        }
+                    } catch(e) {
+                        alert("Failed to save");
+                    }
+                };
+
+                onMounted(() => {
+                    fetchData();
+                    setInterval(fetchData, 5000); // Polling every 5s
+                });
+
+                return {
+                    ports, sortedPorts, loading, fetchData,
+                    statusBorder, statusBadge, statusDot, formatDate,
+                    editNote, editingPort, editForm, saveNote
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
