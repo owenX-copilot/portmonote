@@ -26,9 +26,12 @@ app = FastAPI(title="Portmonote API")
 # Mount frontend
 FRONTEND_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
 
-# Scheduler (Scan every 1 hour as requested)
+# Scheduler (Cron mode: Top of every hour)
 scheduler = BackgroundScheduler()
-scheduler.add_job(collector.run_collection_cycle, 'interval', seconds=3600)
+# 立即执行一次 (for instant feedback on startup)
+scheduler.add_job(collector.run_collection_cycle, 'date', run_date=datetime.now() + timedelta(seconds=1))
+# 整点执行 (minute='0', hour='*')
+scheduler.add_job(collector.run_collection_cycle, 'cron', minute='0', hour='*')
 scheduler.start()
 
 @app.on_event("shutdown")
