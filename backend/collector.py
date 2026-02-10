@@ -1,152 +1,113 @@
 import subprocess
-import platform
-import re
 import logging
 import psutil
 from datetime import datetime
 from sqlalchemy.orm import Session
 from database import SessionLocal
 import models
+import re
 
 logger = logging.getLogger(__name__)
 
-HOST_ID = platform.node()
+# 获取主机名 (用于区分多机)
+try:
+    with open("/etc/hostname", "r") as f:
+        HOST_ID = f.read().strip()
+except:
+    import socket
+    HOST_ID = socket.gethostname()
 
 def get_ports_snapshot():
     """
-    Returns a list of dicts:
-    [
-      {
-        "protocol": "tcp",
-        "port": 3306,
-        "pid": 1234,
-        "process_name": "mysqld",
-        "cmdline": "/usr/sbin/mysqld"
-      }
-    ]
+    Linux Only: Uses `ss` command to get listening ports.
     """
-    system = platform.system().lower()
+    snapshot = []
     
-    snapshot = []
-
-    if system == "linux":
-        # User requested 'ss' parser
-        try:
-            # -l: listening
-            # -n: numeric
-            # -t: tcp
-            # -u: udp
-            # -p: processes
-            # -H: no header
-            output = subprocess.check_output(["ss", "-lntupH"], text=True)
-            for line in output.splitlines():
-                # Example line: 
-                # tcp    LISTEN     0      128    0.0.0.0:22                     0.0.0.0:*                   users:(("sshd",pid=860,fd=3))
-                # Need to parse this. 
-                # Simplification: Use regex to extract basic info
-                parts = line.split()
-                if len(parts) < 5:
-                    continue
-                
-                protocol = parts[0] # tcp or udp
-                state = parts[1]
-                if protocol == 'tcp' and state != 'LISTEN':
-                    continue
-                
-                local_addr = parts[4]
-                # Extract port
-                if ']:' in local_addr: # IPv6
-                     port = int(local_addr.split(']:')[-1])
-                else:
-                    port = int(local_addr.split(':')[-1])
-                
-                # Parse users/pid
-                # users:(("sshd",pid=860,fd=3))
-                pid = None
-                process_name = None
-                cmdline = ""
-                
-                if 'users:' in line:
-                    try:
-                        user_info = line.split('users:((')[1].split('))')[0]
-                        # "sshd",pid=860,fd=3
-                        first_proc = user_info.split('),(')[0] # Handle multiple users if any
-                        # "sshd",pid=860,fd=3
-                        
-                        proc_parts = first_proc.split(',')
-                        p_name = proc_parts[0].strip('"')
-                        p_id_str = [p for p in proc_parts if 'pid=' in p]
-                        if p_id_str:
-                            pid = int(p_id_str[0].split('=')[1])
-                            process_name = p_name
-                    except Exception:
-                        pass
-                
-                if pid:
-                    try:
-                        proc = psutil.Process(pid)
-                        cmdline = " ".join(proc.cmdline())
-                        if not process_name:
-                            process_name = proc.name()
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        pass
-
-                snapshot.append({
-                    "protocol": protocol,
-                    "port": port,
-                    "pid": pid,
-                    "process_name": process_name,
-                    "cmdline": cmdline
-                })
-        except FileNotFoundError:
-             logger.error("ss command not found, falling back to psutil")
-             return get_ports_snapshot_cross_platform()
-        except Exception as e:
-            logger.error(f"Error executing ss: {e}")
-            return get_ports_snapshot_cross_platform()
-
-    else:
-        # Windows/Mac fallback using psutil directly
-        return get_ports_snapshot_cross_platform()
-
-    return snapshot
-
-def get_ports_snapshot_cross_platform():
-    snapshot = []
-    # psutil.net_connections(kind='inet')
     try:
-        connections = psutil.net_connections(kind='inet')
-        for conn in connections:
-            if conn.status == psutil.CONN_LISTEN or conn.type == 2: # TCP LISTEN or UDP (type 2 is SOCK_DGRAM)
-                
-                protocol = 'tcp' if conn.type == 1 else 'udp' # 1=TCP, 2=UDP
-                if protocol == 'tcp' and conn.status != psutil.CONN_LISTEN:
-                    continue
-                
-                pid = conn.pid
-                port = conn.laddr.port
-                
-                process_name = None
-                cmdline = ""
-                if pid:
-                    try:
-                        proc = psutil.Process(pid)
-                        process_name = proc.name()
-                        cmdline = " ".join(proc.cmdline())
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        pass
-                
-                snapshot.append({
-                    "protocol": protocol,
-                    "port": port,
-                    "pid": pid,
-                    "process_name": process_name,
-                    "cmdline": cmdline
-                })
+        # -l: listening
+        # -n: numeric
+        # -t: tcp
+        # -u: udp
+        # -p: processes
+        # -H: no header
+        # Output format example:
+        # tcp    LISTEN     0      128    0.0.0.0:22                     0.0.0.0:*                   users:(("sshd",pid=860,fd=3))
+        output = subprocess.check_output(["ss", "-lntupH"], text=True)
+    except FileNotFoundError:
+        logger.error("'ss' command not found. Please install iproute2 package.")
+        return []
     except Exception as e:
-        logger.error(f"psutil error: {e}")
-    return snapshot
+        logger.error(f"Error executing ss: {e}")
+        return []
 
+    for line in output.splitlines():
+        parts = line.split()
+        if len(parts) < 5:
+            continue
+        
+        protocol_raw = parts[0] # tcp, udp, u_str, etc.
+        state = parts[1]
+        
+        # Mapping: tcp -> tcp, udp -> udp, tcp6 -> tcp, udp6 -> udp
+        if 'tcp' in protocol_raw:
+            protocol = 'tcp'
+            if state != 'LISTEN': continue
+        elif 'udp' in protocol_raw:
+            protocol = 'udp'
+        else:
+            continue
+        
+        local_addr = parts[4]
+        # Extract port. Handling IPv4 0.0.0.0:80 and IPv6 [::]:80
+        try:
+            if ']:' in local_addr: # IPv6
+                    port = int(local_addr.split(']:')[-1])
+            else:
+                port = int(local_addr.split(':')[-1])
+        except ValueError:
+            continue
+        
+        # Parse users/pid
+        # Common formats:
+        # users:(("sshd",pid=860,fd=3))
+        # users:(("nginx",pid=123,fd=4),("nginx",pid=124,fd=4))
+        pid = None
+        process_name = None
+        cmdline = ""
+        
+        if 'users:' in line:
+            try:
+                # Regex is safer than split here
+                pid_match = re.search(r'pid=(\d+)', line)
+                if pid_match:
+                    pid = int(pid_match.group(1))
+                    
+                name_match = re.search(r'"([^"]+)"', line)
+                if name_match:
+                    process_name = name_match.group(1)
+            except Exception:
+                pass
+        
+        # Enhance info with psutil if PID exists (Linux /proc access)
+        if pid:
+            try:
+                proc = psutil.Process(pid)
+                # Ensure we don't overwrite if ss gave us a name, but psutil usually better
+                process_name = proc.name() 
+                cmdline = " ".join(proc.cmdline())
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                # Process might have died or we are not root
+                pass
+
+        snapshot.append({
+            "protocol": protocol,
+            "port": port,
+            "pid": pid,
+            "process_name": process_name,
+            "cmdline": cmdline
+        })
+
+    return snapshot
 
 def run_collection_cycle():
     logger.info("Starting collection cycle (Frequency: 1h)...")
@@ -154,6 +115,9 @@ def run_collection_cycle():
     try:
         current_snapshot = get_ports_snapshot()
         now = datetime.now()
+        
+        if not current_snapshot:
+            logger.warning("Snapshot is empty. Check if 'ss' is returning data/permissions.")
         
         # 1. Build map of current scan: (proto, port) -> data
         scan_map = {}
@@ -173,13 +137,12 @@ def run_collection_cycle():
                 # Exists
                 runtime = known_map[key]
                 
-                # Check if it was disappeared
                 if runtime.current_state == models.PortStateEnum.DISAPPEARED.value:
                     # RE-APPEARED
                     runtime.current_state = models.PortStateEnum.ACTIVE.value
                     runtime.last_seen_at = now
                     runtime.total_seen_count += 1
-                    # Log Event
+                    
                     event = models.PortEvent(
                         port_runtime_id=runtime.id,
                         event_type=models.EventTypeEnum.APPEARED.value,
@@ -189,25 +152,13 @@ def run_collection_cycle():
                     )
                     db.add(event)
                 else:
-                    # Still ALIVE
+                    # Alive
                     runtime.last_seen_at = now
-                    # Optional: Log ALIVE event sparingly? Or implies heartbeat.
-                    # User said: "Yellow: Appeared/Disappeared >= N times".
-                    # We update simple attributes
                 
-                # Update details if changed
-                if data['pid']:
-                    runtime.current_pid = data['pid']
-                if data['process_name']:
-                    runtime.process_name = data['process_name']
-                if data['cmdline']:
-                    runtime.cmdline = data['cmdline']
+                if data['pid']: runtime.current_pid = data['pid']
+                if data['process_name']: runtime.process_name = data['process_name']
+                if data['cmdline']: runtime.cmdline = data['cmdline']
 
-                # Update uptime approx (seconds since last check? rough calc)
-                # Simple logic: increment by interval (e.g. 10s) if active
-                # For now, we can recalculate uptime based on first_seen if continuous, but that's hard.
-                # Let's just create 'total_uptime_seconds' logic later or heuristic.
-                
             else:
                 # NEW
                 runtime = models.PortRuntime(
@@ -223,7 +174,7 @@ def run_collection_cycle():
                     total_seen_count=1
                 )
                 db.add(runtime)
-                db.flush() # get id
+                db.flush() 
                 
                 event = models.PortEvent(
                     port_runtime_id=runtime.id,
@@ -238,7 +189,7 @@ def run_collection_cycle():
         for key, runtime in known_map.items():
             if key not in scan_map:
                 if runtime.current_state == models.PortStateEnum.ACTIVE.value:
-                    # Just Disappeared
+                    # Disappeared
                     runtime.current_state = models.PortStateEnum.DISAPPEARED.value
                     runtime.last_disappeared_at = now
                     
