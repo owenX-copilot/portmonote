@@ -53,7 +53,7 @@
             
             <div v-for="port in sortedPorts" :key="port.protocol + '-' + port.port" 
                  class="bg-gray-800 rounded-xl p-5 border shadow-lg hover:shadow-xl hover:bg-gray-750 transition-all duration-300 relative group cursor-pointer"
-                 :class="statusBorder(port.derived_status)"
+                 :class="statusBorder(port)"
                  @click="editNote(port)">
                  
                 <!-- Pin Button (Top Right) -->
@@ -72,8 +72,8 @@
                         {{ port.port }} / {{ port.protocol.toUpperCase() }}
                     </div>
                     <div class="flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-bold" 
-                         :class="statusBadge(port.derived_status)">
-                        <span class="w-2 h-2 rounded-full" :class="statusDot(port.derived_status)"></span>
+                         :class="statusBadge(port)">
+                        <span class="w-2 h-2 rounded-full" :class="statusDot(port)"></span>
                         {{ port.derived_status.toUpperCase() }}
                     </div>
                 </div>
@@ -215,23 +215,31 @@
 
                 const sortedPorts = computed(() => {
                     return [...ports.value].sort((a, b) => {
-                        // Priority: Suspicious > Pinned > Flapping > Ghost > Healthy
+                        // Priority Logic:
+                        // 1. Suspicious (Absolute Top)
+                        // 2. Pinned
+                        // 3. Trusted (Green)
+                        // 4. Expected (Gray)
+                        
                         const score = (p) => {
                             let s = 0;
                             const status = p.derived_status;
+                            const risk = p.risk_level;
 
                             // 1. Critical Status (Overrides everything)
-                            if (status === 'suspicious') s += 1000;
+                            if (status === 'suspicious' || risk === 'suspicious') s += 10000;
                             
                             // 2. User Pin (High priority)
-                            if (p.is_pinned) s += 500;
+                            if (p.is_pinned) s += 5000;
 
-                            // 3. Other statuses
-                            if (status === 'flapping') s += 300;
-                            if (status === 'ghost') s += 200;
-                            if (status === 'healthy') s += 100;
+                            // 3. Normal logic
+                            // Trusted > Expected
+                            if (risk === 'trusted') s += 1000;
+                            else if (risk === 'expected') s += 100;
 
-                            // 4. Tie-breaker: Port number (lower is better usually, or use uptime)
+                            // 4. Active > Disappeared (within same tier)
+                            if (p.current_state === 'active') s += 50;
+
                             return s;
                         };
                         return score(b) - score(a);
@@ -295,34 +303,50 @@
                     return safe;
                 };
 
-                const statusBorder = (status) => {
-                    switch(status) {
-                        case 'healthy': return 'border-gray-700 hover:border-green-800';
-                        case 'suspicious': return 'border-red-900 hover:border-red-600 shadow-red-900/20';
-                        case 'ghost': return 'border-gray-600 opacity-60';
-                        case 'flapping': return 'border-yellow-700';
-                        default: return 'border-gray-700';
+
+                const statusBorder = (original) => {
+                    const status = original.derived_status;
+                    const risk = original.risk_level;
+                    const isDisappeared = original.current_state === 'disappeared';
+                    
+                    // Base Colors
+                    let base = '';
+                    if (status === 'suspicious' || risk === 'suspicious') base = 'border-red-600 shadow-red-900/20';
+                    else if (risk === 'trusted') base = 'border-green-800 hover:border-green-600';
+                    else base = 'border-gray-700 hover:border-gray-500'; // Expected
+
+                    // Blinking Logic for Disappeared
+                    if (isDisappeared) {
+                        if (status === 'suspicious' || risk === 'suspicious') return 'border-red-500 bg-red-900/10 animate-pulse'; // Bright Red Blink
+                        if (risk === 'trusted') return 'border-red-500/60 bg-green-900/10 animate-pulse'; // Red Border + Greenish bg
+                        return 'border-red-900/50 bg-gray-900/50 animate-pulse'; // Gray/Red Blink
                     }
+
+                    return base;
                 };
 
-                const statusBadge = (status) => {
-                     switch(status) {
-                        case 'healthy': return 'bg-green-900/30 text-green-400';
-                        case 'suspicious': return 'bg-red-900/30 text-red-400';
-                         case 'ghost': return 'bg-gray-700 text-gray-400';
-                        case 'flapping': return 'bg-yellow-900/30 text-yellow-400';
-                        default: return 'bg-gray-800 text-gray-500';
-                    }
+                const statusBadge = (original) => {
+                    const status = original.derived_status;
+                    const risk = original.risk_level;
+                    const isDisappeared = original.current_state === 'disappeared';
+
+                    if (status === 'suspicious' || risk === 'suspicious') return 'bg-red-900/30 text-red-400';
+                    if (risk === 'trusted') return isDisappeared ? 'bg-red-900/20 text-red-400' : 'bg-green-900/30 text-green-400';
+                    
+                    // Expected
+                    return isDisappeared ? 'bg-red-900/10 text-gray-500' : 'bg-gray-800 text-gray-500';
                 };
 
-                const statusDot = (status) => {
-                     switch(status) {
-                        case 'healthy': return 'bg-green-400';
-                        case 'suspicious': return 'bg-red-500 animate-pulse';
-                         case 'ghost': return 'bg-gray-400';
-                        case 'flapping': return 'bg-yellow-400';
-                        default: return 'bg-gray-500';
-                    }
+                const statusDot = (original) => {
+                    const status = original.derived_status;
+                    const risk = original.risk_level;
+                    const isDisappeared = original.current_state === 'disappeared';
+
+                    if (isDisappeared) return 'bg-red-500 animate-ping'; // All disappeared ping red
+
+                    if (status === 'suspicious' || risk === 'suspicious') return 'bg-red-500';
+                    if (risk === 'trusted') return 'bg-green-400';
+                    return 'bg-gray-500'; // Expected
                 }
 
                 const formatDate = (str) => {
