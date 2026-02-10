@@ -42,6 +42,10 @@ def shutdown_event():
 def read_root():
     return FileResponse(os.path.join(FRONTEND_PATH, "index.html"))
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return FileResponse(os.path.join(os.path.dirname(__file__), "favicon.ico"))
+
 @app.post("/trigger-scan")
 def trigger_scan(background_tasks: BackgroundTasks):
     background_tasks.add_task(collector.run_collection_cycle)
