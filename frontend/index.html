@@ -52,8 +52,9 @@
         <main class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             
             <div v-for="port in sortedPorts" :key="port.protocol + '-' + port.port" 
-                 class="bg-gray-800 rounded-xl p-5 border shadow-lg hover:shadow-xl transition-shadow duration-300 relative group"
-                 :class="statusBorder(port.derived_status)">
+                 class="bg-gray-800 rounded-xl p-5 border shadow-lg hover:shadow-xl hover:bg-gray-750 transition-all duration-300 relative group cursor-pointer"
+                 :class="statusBorder(port.derived_status)"
+                 @click="editNote(port)">
                 
                 <!-- Status Indicator & Title -->
                 <div class="flex justify-between items-start mb-3">
@@ -84,7 +85,7 @@
                         {{ port.description || 'No description provided.' }}
                     </p>
                 </div>
-                <div v-else class="mb-4 py-2 border-2 border-dashed border-gray-700 rounded text-center cursor-pointer hover:border-gray-500 transition" @click="editNote(port)">
+                <div v-else class="mb-4 py-2 border-2 border-dashed border-gray-700 rounded text-center hover:border-gray-500 transition">
                     <span class="text-xs text-gray-600">+ Add Memory</span>
                 </div>
 
@@ -103,25 +104,20 @@
                 <div v-if="port.first_seen_at" class="mt-2 text-[10px] text-gray-600 text-right">
                     First seen: {{ formatDate(port.first_seen_at) }}
                 </div>
-                
-                <!-- Hover Action -->
-                <button @click="editNote(port)" class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-700 rounded text-gray-400 transition">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                </button>
             </div>
         </main>
 
         <!-- Edit Modal -->
-        <div v-if="editingPort" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+        <div v-if="editingPort" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center p-4 z-50 backdrop-blur-sm" @click.self="closeModal">
             <div class="bg-gray-800 rounded-lg max-w-4xl w-full shadow-2xl border border-gray-700 flex flex-col md:flex-row overflow-hidden max-h-[90vh]">
                 
                 <!-- Left: Edit Form -->
                 <div class="p-6 w-full md:w-1/2 overflow-y-auto border-b md:border-b-0 md:border-r border-gray-700">
-                    <h3 class="text-xl font-bold mb-4 flex items-center gap-2">
-                        <span class="text-blue-400">#</span> Memory
-                        <span class="text-gray-500 text-sm font-normal">for port {{ editingPort.port }}</span>
+                    <h3 class="text-xl font-bold mb-4 flex justify-between items-center gap-2">
+                         <span><span class="text-blue-400">#</span> Memory</span>
+                         <span class="text-xs text-green-400 font-mono transition-opacity duration-500" :class="saving ? 'opacity-100' : 'opacity-0'">
+                            Saved
+                         </span>
                     </h3>
                     
                     <div class="space-y-4">
@@ -149,9 +145,8 @@
                         </div>
 
                         <!-- Action Buttons -->
-                        <div class="mt-8 flex justify-end gap-3">
-                            <button @click="editingPort = null" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm transition">Cancel</button>
-                            <button @click="saveNote" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm font-bold transition shadow-lg shadow-blue-900/50">Save Memory</button>
+                        <div class="mt-8 flex justify-end gap-3 text-xs text-gray-500">
+                             Changes are saved automatically. Click outside to close.
                         </div>
                     </div>
                 </div>
@@ -194,7 +189,7 @@
     </div>
 
     <script>
-        const { createApp, ref, computed, onMounted } = Vue;
+        const { createApp, ref, computed, onMounted, watch } = Vue;
 
         createApp({
             setup() {
@@ -202,6 +197,7 @@
                 const loading = ref(false);
                 const editingPort = ref(null);
                 const editForm = ref({});
+                const saving = ref(false);
                 
                 // Witr Logic
                 const witrOutput = ref(null);
@@ -247,12 +243,35 @@
                     }
                 };
                 
-                // Simple colorizer for terminal output
+                // ANSI color parser
                 const formatWitrOutput = (text) => {
                     if(!text) return '';
-                    // Strip ansi codes ideally, or just display raw. 
-                    // For now, let's just make sure html is safe-ish
-                    return text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                    
+                    // 1. Basic cleaning of HTML chars
+                    let safe = text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                    
+                    // 2. ANSI Codes -> HTML
+                    const colors = {
+                        30: 'text-gray-500', 31: 'text-red-400', 32: 'text-green-400', 33: 'text-yellow-400',
+                        34: 'text-blue-400', 35: 'text-purple-400', 36: 'text-cyan-400', 37: 'text-gray-200'
+                    };
+                    
+                    // Replace [2m (Dim)
+                    safe = safe.replace(/\x1b\[2m/g, '<span class="opacity-60">');
+                    
+                    // Replace Colors
+                    safe = safe.replace(/\x1b\[(3[0-7])m/g, (match, p1) => {
+                        return `<span class="${colors[p1] || ''}">`;
+                    });
+                    
+                    // Replace [0m (Reset) or others
+                    safe = safe.replace(/\x1b\[0m/g, '</span>');
+                    safe = safe.replace(/\x1b\[1m/g, '<b class="font-bold">');
+                    
+                    // Clean leftovers
+                    safe = safe.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, ''); 
+                    
+                    return safe;
                 };
 
                 const statusBorder = (status) => {
@@ -290,6 +309,10 @@
                     return new Date(str).toLocaleDateString();
                 }
 
+                const closeModal = () => {
+                    editingPort.value = null;
+                }
+
                 const editNote = (port) => {
                     editingPort.value = port;
                     witrOutput.value = null; // Reset witr
@@ -303,6 +326,7 @@
 
                 const saveNote = async () => {
                     if (!editingPort.value) return;
+                    saving.value = true;
                     const p = editingPort.value;
                     try {
                         const url = `/notes?host_id=${p.host_id}&protocol=${p.protocol}&port=${p.port}`;
@@ -312,13 +336,24 @@
                             body: JSON.stringify(editForm.value)
                         });
                         if (res.ok) {
-                            fetchData(); // Refresh to see updates
-                            editingPort.value = null;
+                            fetchData(); // Refresh bg list
                         }
                     } catch(e) {
-                        alert("Failed to save");
+                         console.error("Save failed");
+                    } finally {
+                        setTimeout(() => saving.value = false, 800);
                     }
                 };
+                
+                // Auto-save debouncer
+                let debounceTimer = null;
+                watch(editForm, (newVal) => {
+                    if(!editingPort.value) return;
+                    if(debounceTimer) clearTimeout(debounceTimer);
+                    debounceTimer = setTimeout(() => {
+                        saveNote();
+                    }, 1000); 
+                }, { deep: true });
 
                 onMounted(() => {
                     fetchData();
@@ -328,7 +363,7 @@
                 return {
                     ports, sortedPorts, loading, fetchData,
                     statusBorder, statusBadge, statusDot, formatDate,
-                    editNote, editingPort, editForm, saveNote,
+                    editNote, editingPort, editForm, saveNote, saving, closeModal,
                     runWitr, witrOutput, witrLoading, formatWitrOutput
                 }
             }
