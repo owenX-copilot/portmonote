@@ -76,6 +76,7 @@ graph TD
 | `owner` | String | 负责人 |
 | `service_type` | Enum | `web`, `db`, `tunnel`, `test`, `unknown` ... |
 | `risk_level` | Enum | `trusted`, `expected`, `suspicious` |
+| `is_pinned` | Boolean | 是否手动置顶 (手动修改优先级) |
 | `tags` | JSON | 标签 |
 
 **逻辑关联**: 通过 `(host_id, protocol, port)` 与 Runtime 软关联，这确保即使 Runtime 数据被清理，Note 依然保留。
@@ -85,7 +86,7 @@ graph TD
 ### 4.1. 采集器 (Collector)
 频率: 每 1小时
 
-1. **执行**: `ss -lntupH`
+1. **执行**: `sudo ss -lntupH`
 2. **解析**: 结构化 PID, Process, Port, Protocol。
 3. **对比更新**:
     - **Existing**: 更新 `last_seen_at`, `current_pid`。
@@ -93,11 +94,12 @@ graph TD
     - **Missing** (本轮未出现但库里是 active): 标记 `current_state = disappeared`, 更新 `last_disappeared_at`, 记录 `disappeared` 事件。**绝不物理删除**。
 
 ### 4.2. 状态衍生 (Derived States)
-UI 根据数据计算状态，而非数据库存储字段：
+UI 根据数据计算状态，而非数据库存储字段。排序优先级如下：
 
-- **🟢 Healthy**: Active + High Uptime + Trusted Note
-- **🟡 Flapping**: 短时间内多次 Appeared/Disappeared
-- **🔴 Suspicious**: Active + No Note + Process Unknown
+1. **🔴 Suspicious** (高危): Active + No Note 或 标记为 Suspicious。优先级最高。
+2. **📌 Pinned** (置顶): 用户手动 Pin 住的端口。
+3. **🟡 Flapping** / **⚫ Ghost**: 下线或不稳定的服务。
+4. **🟢 Healthy** / **⚪ Expected**: Active + Trusted Note / Active + Expected。优先级最低。
 - **⚫ Ghost**: Disappeared + Note marked as Expected
 
 ## 5. 项目路线图 (Roadmap)

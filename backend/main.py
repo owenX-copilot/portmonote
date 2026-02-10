@@ -188,6 +188,7 @@ def get_dashboard_data(db: Session = Depends(get_db)):
             description=n.description if n else None,
             owner=n.owner if n else None,
             risk_level=n.risk_level if n else "unknown",
+            is_pinned=bool(n.is_pinned) if n else False,
             tags=n.tags if n else None,
             
             derived_status=status,

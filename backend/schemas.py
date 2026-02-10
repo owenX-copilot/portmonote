@@ -29,6 +29,7 @@ class PortNoteBase(BaseModel):
     owner: Optional[str] = None
     service_type: Optional[str] = "unknown"
     risk_level: Optional[str] = "expected"
+    is_pinned: Optional[bool] = False
     tags: Optional[str] = None
 
 class PortNoteCreate(PortNoteBase):
@@ -79,6 +80,7 @@ class MergedPortItem(BaseModel):
     description: Optional[str]
     owner: Optional[str]
     risk_level: str
+    is_pinned: bool = False
     tags: Optional[str]
     
     # Derived

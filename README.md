@@ -76,6 +76,7 @@ graph TD
 | `owner` | String | Owner |
 | `service_type` | Enum | `web`, `db`, `tunnel`, `test`, `unknown` ... |
 | `risk_level` | Enum | `trusted`, `expected`, `suspicious` |
+| `is_pinned` | Boolean | True implies highest priority display (Manual) |
 | `tags` | JSON | Tags |
 
 **Logical Association**: Softly associated with Runtime via `(host_id, protocol, port)`. This ensures that even if Runtime data is cleaned, Note remains.
@@ -85,7 +86,7 @@ graph TD
 ### 4.1. Collector
 Frequency: Every 1 hour
 
-1. **Execute**: `ss -lntupH`
+1. **Execute**: `sudo ss -lntupH`
 2. **Parse**: Structure PID, Process, Port, Protocol.
 3. **Compare & Update**:
     - **Existing**: Update `last_seen_at`, `current_pid`.
@@ -95,9 +96,11 @@ Frequency: Every 1 hour
 ### 4.2. Derived States
 UI calculates state based on data, rather than DB storage fields:
 
+- **🔴 Suspicious**: Active + No Note / Risk Level = Suspicious (Highest Sort Order)
+- **📌 Pinned**: User Manually Pinned (Second Highest)
+- **🟡 Flapping**: Frequent Appeared/Disappeared within a short time / Disappeared but recently
+- **⚫ Ghost**: Disappeared + Note marked as Expected
 - **🟢 Healthy**: Active + High Uptime + Trusted Note
-- **🟡 Flapping**: Frequent Appeared/Disappeared within a short time
-- **🔴 Suspicious**: Active + No Note + Process Unknown
 - **⚫ Ghost**: Disappeared + Note marked as Expected
 
 ## 5. Diagnostics (witr integration)
