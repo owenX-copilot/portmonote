@@ -16,9 +16,9 @@ Portmonote 不是为了取代 Prometheus (监控指标) 或 Nmap (安全扫描)�
 
 ```mermaid
 graph TD
-    OS[OS Layer (ss command)] -->|Raw Data| Collector
+    OS["OS Layer (ss command)"] -->|Raw Data| Collector
     subgraph Core System
-        Collector[Collector Service] -->|Write/Update| DB[(DB Layer)]
+        Collector[Collector Service] -->|Write/Update| DB[("DB Layer")]
         DB -->|Query| API[REST API]
     end
     API -->|Data| UI[Web UI]
