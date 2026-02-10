@@ -92,6 +92,7 @@ class PortNote(Base):
     owner = Column(String, nullable=True)
     service_type = Column(String, default=ServiceTypeEnum.UNKNOWN.value)
     risk_level = Column(String, default=RiskLevelEnum.EXPECTED.value)
+    is_pinned = Column(Integer, default=0) # 0=False, 1=True (using Integer for SQLite boolean compat)
     tags = Column(Text, nullable=True) # Simplified as Text (comma separated or JSON string)
 
     # Explicitly NO ForeignKey to PortRuntime
