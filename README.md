@@ -100,7 +100,20 @@ UI calculates state based on data, rather than DB storage fields:
 - **🔴 Suspicious**: Active + No Note + Process Unknown
 - **⚫ Ghost**: Disappeared + Note marked as Expected
 
-## 5. Roadmap
+## 5. Diagnostics (witr integration)
+
+You can inspect any active port directly from the UI. This feature leverages the `witr` command-line tool.
+
+1.  **Install witr**:
+    Follow instructions at [https://github.com/pranshuparmar/witr](https://github.com/pranshuparmar/witr).
+    ```bash
+    # Example (Rust/Cargo)
+    cargo install witr
+    ```
+2.  **Ensure Path**: Make sure `witr` is in the system PATH where Portmonote runs.
+3.  **Use**: Click on any card -> "run witr".
+
+## 6. Roadmap
 
 1. **Backend Initialization**: FastAPI + SQLAlchemy + APScheduler. (Done)
 2. **Collector Implementation**: `ss` parser implementation using Python. (Done)

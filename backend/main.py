@@ -88,6 +88,48 @@ def format_uptime(dt: datetime) -> str:
         return f"{days}d {hours}h"
     return f"{hours}h"
 
+import subprocess
+
+@app.get("/inspect/{port}")
+def inspect_port(port: int):
+    """
+    Runs `witr --port <port>` and returns the raw output.
+    Note: 'witr' must be in the PATH.
+    """
+    try:
+        # Check if witr exists
+        subprocess.check_output(["which", "witr"])
+    except subprocess.CalledProcessError:
+        return {"output": "Error: 'witr' command not found on server.\nPlease install it: https://github.com/pranshuparmar/witr", "error": True}
+
+    try:
+        # Run witr with a timeout to prevent hanging
+        # witr usually runs continuously? We might need a flag to run once or timeout.
+        # Looking at witr docs, it seems to show info and exit? 
+        # Actually many top/stat tools wait. 
+        # If witr is interactive/watch mode, this will hang.
+        # Assuming witr outputs once. If it's a TUI (Text UI), capturing stdout fails.
+        # Let's hope it dumps info. If it's a monitor, we might just grab first 2s.
+        
+        # NOTE: witr is likely a TUI/monitor. We try to run it with a timeout.
+        # If it doesn't support 'one-shot' mode, we kill it after 2s and capture output.
+        cmd = ["witr", "--port", str(port)]
+        
+        # Using timeout to capture initial output for tools that update continuously
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=2)
+            output = result.stdout
+        except subprocess.TimeoutExpired as e:
+            output = e.stdout or e.stderr or "witr command timed out (it might be interactive)."
+            if not output: output = "Collecting data..." # simple fallback
+
+        # Clean up ANSI codes if necessary (TUI often has them)
+        # For now, let frontend handle or display raw.
+        return {"output": output, "error": False}
+        
+    except Exception as e:
+        return {"output": f"Execution failed: {str(e)}", "error": True}
+
 @app.get("/ports", response_model=List[schemas.MergedPortItem])
 def get_dashboard_data(db: Session = Depends(get_db)):
     runtimes = db.query(models.PortRuntime).all()

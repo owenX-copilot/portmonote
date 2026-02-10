@@ -114,35 +114,80 @@
         </main>
 
         <!-- Edit Modal -->
-        <div v-if="editingPort" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center p-4 z-50">
-            <div class="bg-gray-800 rounded-lg max-w-md w-full p-6 shadow-2xl border border-gray-700">
-                <h3 class="text-xl font-bold mb-4">Edit Memory</h3>
-                <div class="space-y-4">
-                    <div>
-                        <label class="block text-xs text-gray-500 mb-1">Title</label>
-                        <input v-model="editForm.title" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white focus:border-blue-500 outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-xs text-gray-500 mb-1">Description</label>
-                        <textarea v-model="editForm.description" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white focus:border-blue-500 outline-none h-20"></textarea>
-                    </div>
-                    <div>
-                        <label class="block text-xs text-gray-500 mb-1">Owner</label>
-                        <input v-model="editForm.owner" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white focus:border-blue-500 outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-xs text-gray-500 mb-1">Risk Level</label>
-                        <select v-model="editForm.risk_level" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white focus:border-blue-500 outline-none">
-                            <option value="expected">Expected</option>
-                            <option value="trusted">Trusted</option>
-                            <option value="suspicious">__Suspicious__</option>
-                        </select>
+        <div v-if="editingPort" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+            <div class="bg-gray-800 rounded-lg max-w-4xl w-full shadow-2xl border border-gray-700 flex flex-col md:flex-row overflow-hidden max-h-[90vh]">
+                
+                <!-- Left: Edit Form -->
+                <div class="p-6 w-full md:w-1/2 overflow-y-auto border-b md:border-b-0 md:border-r border-gray-700">
+                    <h3 class="text-xl font-bold mb-4 flex items-center gap-2">
+                        <span class="text-blue-400">#</span> Memory
+                        <span class="text-gray-500 text-sm font-normal">for port {{ editingPort.port }}</span>
+                    </h3>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Title</label>
+                            <input v-model="editForm.title" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white focus:border-blue-500 outline-none placeholder-gray-600" placeholder="e.g. My Database">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Description</label>
+                            <textarea v-model="editForm.description" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white focus:border-blue-500 outline-none h-24 placeholder-gray-600" placeholder="What is this service for?"></textarea>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs text-gray-500 mb-1">Owner</label>
+                                <input v-model="editForm.owner" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white focus:border-blue-500 outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-500 mb-1">Risk Level</label>
+                                <select v-model="editForm.risk_level" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white focus:border-blue-500 outline-none">
+                                    <option value="expected">Expected</option>
+                                    <option value="trusted">Trusted (Green)</option>
+                                    <option value="suspicious">Suspicious (Red)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="mt-8 flex justify-end gap-3">
+                            <button @click="editingPort = null" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm transition">Cancel</button>
+                            <button @click="saveNote" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm font-bold transition shadow-lg shadow-blue-900/50">Save Memory</button>
+                        </div>
                     </div>
                 </div>
-                <div class="mt-6 flex justify-end gap-3">
-                    <button @click="editingPort = null" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm transition">Cancel</button>
-                    <button @click="saveNote" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm font-bold transition">Save Memory</button>
+
+                <!-- Right: Witr Diagnostics -->
+                <div class="p-6 w-full md:w-1/2 bg-gray-900 flex flex-col">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-xl font-bold text-gray-200">Diagnostics</h3>
+                        <button @click="runWitr(editingPort.port)" 
+                                class="px-3 py-1 text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded text-green-400 font-mono transition flex items-center gap-1"
+                                :disabled="witrLoading">
+                            <span v-if="witrLoading" class="animate-spin">⟳</span>
+                            <span v-else>>_</span>
+                            run witr
+                        </button>
+                    </div>
+
+                    <div class="flex-1 bg-black rounded border border-gray-800 p-4 font-mono text-xs overflow-auto relative group">
+                        <div v-if="!witrOutput && !witrLoading" class="absolute inset-0 flex items-center justify-center text-gray-700 pointer-events-none">
+                            <div class="text-center">
+                                <p class="mb-1 text-4xl opacity-20">🔍</p>
+                                <p>Click 'run witr' to inspect</p>
+                            </div>
+                        </div>
+                        <div v-if="witrLoading" class="text-green-500 animate-pulse">
+                            root@server:~$ witr --port {{ editingPort.port }}<br>
+                            Analyzing traffic and process info...
+                        </div>
+                        <pre v-if="witrOutput" class="whitespace-pre-wrap text-gray-300 leading-relaxed" v-html="formatWitrOutput(witrOutput)"></pre>
+                    </div>
+                    
+                    <p class="mt-3 text-[10px] text-gray-600 text-center">
+                        Powered by <a href="https://github.com/pranshuparmar/witr" target="_blank" class="hover:text-gray-400 underline">witr</a>
+                    </p>
                 </div>
+
             </div>
         </div>
 
@@ -157,6 +202,10 @@
                 const loading = ref(false);
                 const editingPort = ref(null);
                 const editForm = ref({});
+                
+                // Witr Logic
+                const witrOutput = ref(null);
+                const witrLoading = ref(false);
 
                 const sortedPorts = computed(() => {
                     return [...ports.value].sort((a, b) => {
@@ -182,6 +231,28 @@
                     } finally {
                         loading.value = false;
                     }
+                };
+
+                const runWitr = async (port) => {
+                    witrLoading.value = true;
+                    witrOutput.value = null;
+                    try {
+                        const res = await fetch(`/inspect/${port}`);
+                        const data = await res.json();
+                        witrOutput.value = data.output;
+                    } catch(e) {
+                        witrOutput.value = "Failed to run witr diagnostics.";
+                    } finally {
+                        witrLoading.value = false;
+                    }
+                };
+                
+                // Simple colorizer for terminal output
+                const formatWitrOutput = (text) => {
+                    if(!text) return '';
+                    // Strip ansi codes ideally, or just display raw. 
+                    // For now, let's just make sure html is safe-ish
+                    return text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
                 };
 
                 const statusBorder = (status) => {
@@ -221,6 +292,7 @@
 
                 const editNote = (port) => {
                     editingPort.value = port;
+                    witrOutput.value = null; // Reset witr
                     editForm.value = {
                         title: port.title || '',
                         description: port.description || '',
@@ -256,7 +328,8 @@
                 return {
                     ports, sortedPorts, loading, fetchData,
                     statusBorder, statusBadge, statusDot, formatDate,
-                    editNote, editingPort, editForm, saveNote
+                    editNote, editingPort, editForm, saveNote,
+                    runWitr, witrOutput, witrLoading, formatWitrOutput
                 }
             }
         }).mount('#app');
