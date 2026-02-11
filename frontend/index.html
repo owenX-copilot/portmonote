@@ -250,6 +250,7 @@
                 const editingPort = ref(null);
                 const editForm = ref({});
                 const saving = ref(false);
+                const isInit = ref(false);
                 
                 // Witr Logic
                 const witrOutput = ref(null);
@@ -438,13 +439,31 @@
                     editingPort.value = port;
                     witrOutput.value = null; // Reset witr
                     fetchHistory(port); 
+                    
+                    // Prevent watch trigger during init
+                    isInit.value = true; 
+                    
+                    // Determine initial risk level:
+                    // If existing note -> use its risk
+                    // If no note (unknown) AND port is suspicious -> default to suspicious
+                    // Else -> default to expected
+                    let initialRisk = 'expected';
+                    if (port.risk_level && port.risk_level !== 'unknown') {
+                        initialRisk = port.risk_level;
+                    } else if (port.derived_status === 'suspicious') {
+                        initialRisk = 'suspicious';
+                    }
+
                     editForm.value = {
                         title: port.title || '',
                         description: port.description || '',
                         owner: port.owner || '',
-                        risk_level: port.risk_level || 'expected',
+                        risk_level: initialRisk,
                         is_pinned: port.is_pinned || false
                     };
+                    
+                    // Allow watch after a tick
+                    setTimeout(() => { isInit.value = false; }, 100);
                 };
 
                 const togglePin = async (port, event) => {
@@ -496,7 +515,9 @@
                 // Auto-save debouncer
                 let debounceTimer = null;
                 watch(editForm, (newVal) => {
-                    if(!editingPort.value) return;
+                    // Prevent watch trigger during initialization
+                    if(isInit.value || !editingPort.value) return; 
+                    
                     if(debounceTimer) clearTimeout(debounceTimer);
                     debounceTimer = setTimeout(() => {
                         saveNote();
