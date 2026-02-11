@@ -1,5 +1,5 @@
-from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, Header
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any
@@ -7,6 +7,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import uvicorn
 import logging
 import os
+import secrets
 from datetime import datetime, timedelta
 
 from database import engine, get_db, Base
@@ -20,6 +21,10 @@ logger = logging.getLogger(__name__)
 
 # Create Tables
 Base.metadata.create_all(bind=engine)
+
+# Security Token (Generated on startup)
+CSRF_TOKEN = secrets.token_hex(32)
+logger.info(f"Session CSRF Token: {CSRF_TOKEN}")
 
 app = FastAPI(title="Portmonote API")
 
@@ -38,15 +43,35 @@ scheduler.start()
 def shutdown_event():
     scheduler.shutdown()
 
+async def verify_csrf(x_csrf_token: str = Header(None)):
+    if not x_csrf_token or x_csrf_token != CSRF_TOKEN:
+        raise HTTPException(status_code=403, detail="Invalid or missing CSRF Token. Please refresh the page.")
+
 @app.get("/")
 def read_root():
-    return FileResponse(os.path.join(FRONTEND_PATH, "index.html"))
+    # Inject CSRF Token into HTML
+    try:
+        with open(os.path.join(FRONTEND_PATH, "index.html"), "r", encoding="utf-8") as f:
+            content = f.read()
+        
+        # Inject token as a global variable in the first script tag or head
+        injection = f'<script>window.PORTMONOTE_CSRF_TOKEN = "{CSRF_TOKEN}";</script>'
+        if "<head>" in content:
+            content = content.replace("<head>", f"<head>\n{injection}")
+        else:
+            # Fallback
+            content = injection + content
+            
+        return HTMLResponse(content=content)
+    except Exception as e:
+        logger.error(f"Error serving frontend: {e}")
+        return HTMLResponse(content="Error loading frontend", status_code=500)
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
     return FileResponse(os.path.join(os.path.dirname(__file__), "favicon.ico"))
 
-@app.post("/trigger-scan")
+@app.post("/trigger-scan", dependencies=[Depends(verify_csrf)])
 def trigger_scan(background_tasks: BackgroundTasks):
     background_tasks.add_task(collector.run_collection_cycle)
     return {"message": "Scan triggered in background"}
@@ -233,7 +258,7 @@ def get_port_history(host_id:str, protocol:str, port:int, db: Session = Depends(
     
     return events
 
-@app.post("/notes", response_model=schemas.PortNoteBase)
+@app.post("/notes", response_model=schemas.PortNoteBase, dependencies=[Depends(verify_csrf)])
 def update_note(note_in: schemas.PortNoteCreate, host_id:str, protocol:str, port:int, db: Session = Depends(get_db)):
     # Find existing or create
     note = db.query(models.PortNote).filter(
@@ -258,7 +283,7 @@ def update_note(note_in: schemas.PortNoteCreate, host_id:str, protocol:str, port
     db.refresh(note)
     return note
 
-@app.delete("/ports")
+@app.delete("/ports", dependencies=[Depends(verify_csrf)])
 def delete_port(host_id: str, protocol: str, port: int, db: Session = Depends(get_db)):
     """
     Hard delete a port (Runtime + Note + Events).

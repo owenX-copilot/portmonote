@@ -524,7 +524,10 @@
                         const url = `/notes?host_id=${port.host_id}&protocol=${port.protocol}&port=${port.port}`;
                         const res = await fetch(url, {
                             method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-Token': window.PORTMONOTE_CSRF_TOKEN
+                            },
                             body: JSON.stringify({ is_pinned: newPinnedState })
                         });
                         if (!res.ok) {
@@ -552,7 +555,12 @@
                     try {
                         const p = deletingPort.value;
                         const url = `/ports?host_id=${p.host_id}&protocol=${p.protocol}&port=${p.port}`;
-                        const res = await fetch(url, { method: 'DELETE' });
+                        const res = await fetch(url, { 
+                            method: 'DELETE',
+                            headers: {
+                                'X-CSRF-Token': window.PORTMONOTE_CSRF_TOKEN
+                            }
+                        });
                         if(res.ok) {
                             deletingPort.value = null; // Close modal
                             fetchData(); // Refresh list
@@ -572,7 +580,10 @@
                         const url = `/notes?host_id=${p.host_id}&protocol=${p.protocol}&port=${p.port}`;
                         const res = await fetch(url, {
                             method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-Token': window.PORTMONOTE_CSRF_TOKEN
+                            },
                             body: JSON.stringify(editForm.value)
                         });
                         if (res.ok) {
