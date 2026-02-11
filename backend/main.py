@@ -258,5 +258,34 @@ def update_note(note_in: schemas.PortNoteCreate, host_id:str, protocol:str, port
     db.refresh(note)
     return note
 
+@app.delete("/ports")
+def delete_port(host_id: str, protocol: str, port: int, db: Session = Depends(get_db)):
+    """
+    Hard delete a port (Runtime + Note + Events).
+    If the port is currently active, it may reappear on the next scan.
+    """
+    # 1. Delete Runtime (Cascades Events)
+    runtime = db.query(models.PortRuntime).filter(
+        models.PortRuntime.host_id == host_id,
+        models.PortRuntime.protocol == protocol,
+        models.PortRuntime.port == port
+    ).first()
+    
+    if runtime:
+        db.delete(runtime)
+        
+    # 2. Delete Note
+    note = db.query(models.PortNote).filter(
+        models.PortNote.host_id == host_id,
+        models.PortNote.protocol == protocol,
+        models.PortNote.port == port
+    ).first()
+    
+    if note:
+        db.delete(note)
+        
+    db.commit()
+    return {"status": "deleted"}
+
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=2008, reload=True)
