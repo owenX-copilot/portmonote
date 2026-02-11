@@ -153,6 +153,25 @@ def run_collection_cycle():
                     db.add(event)
                 else:
                     # Alive
+                    # Check for Process Change (Hijack detection / Service Swaps)
+                    # We check if process_name changed and is not None
+                    if (runtime.process_name and data['process_name'] and 
+                        runtime.process_name != data['process_name']):
+                        
+                        logger.warning(f"Process Changed on port {port}: {runtime.process_name} -> {data['process_name']}")
+                        
+                        event = models.PortEvent(
+                            port_runtime_id=runtime.id,
+                            event_type=models.EventTypeEnum.PROCESS_CHANGE.value,
+                            timestamp=now,
+                            pid=data['pid'],
+                            process_name=data['process_name']
+                        )
+                        db.add(event)
+                        
+                        # OPTIONAL: Downgrade trust if needed? 
+                        # For now, we just record the memory. The UI will show the new process name.
+                        
                     runtime.last_seen_at = now
                 
                 if data['pid']: runtime.current_pid = data['pid']

@@ -173,6 +173,17 @@ def get_dashboard_data(db: Session = Depends(get_db)):
         # Calculate status
         status = calculate_status(r, n)
         
+        # Get latest event for UI warning
+        latest_evt_type = None
+        latest_evt_ts = None
+        if r and r.events:
+            # Sort events desc by id/ts locally since lazy loaded
+            # ideally fetched with query, but list is small per port
+            sorted_evts = sorted(r.events, key=lambda e: e.id, reverse=True)
+            if sorted_evts:
+                 latest_evt_type = sorted_evts[0].event_type
+                 latest_evt_ts = sorted_evts[0].timestamp
+
         item = schemas.MergedPortItem(
             host_id=key[0],
             protocol=key[1],
@@ -196,11 +207,31 @@ def get_dashboard_data(db: Session = Depends(get_db)):
             tags=n.tags if n else None,
             
             derived_status=status,
-            uptime_human=format_uptime(r.first_seen_at) if r and r.current_state == 'active' else ""
+            uptime_human=format_uptime(r.first_seen_at) if r and r.current_state == 'active' else "",
+            
+            latest_event_type=latest_evt_type,
+            latest_event_timestamp=latest_evt_ts
         )
         result.append(item)
         
     return result
+
+@app.get("/history", response_model=List[schemas.PortEventDTO])
+def get_port_history(host_id:str, protocol:str, port:int, db: Session = Depends(get_db)):
+    runtime = db.query(models.PortRuntime).filter(
+        models.PortRuntime.host_id == host_id,
+        models.PortRuntime.protocol == protocol,
+        models.PortRuntime.port == port
+    ).first()
+    
+    if not runtime:
+        return []
+        
+    events = db.query(models.PortEvent).filter(
+        models.PortEvent.port_runtime_id == runtime.id
+    ).order_by(models.PortEvent.timestamp.desc()).all()
+    
+    return events
 
 @app.post("/notes", response_model=schemas.PortNoteBase)
 def update_note(note_in: schemas.PortNoteCreate, host_id:str, protocol:str, port:int, db: Session = Depends(get_db)):

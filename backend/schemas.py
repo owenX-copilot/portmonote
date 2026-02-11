@@ -86,4 +86,19 @@ class MergedPortItem(BaseModel):
     # Derived
     derived_status: DerivedStatusEnum
     uptime_human: Optional[str] # "12d 3h"
+    
+    # Audit
+    latest_event_type: Optional[str]
+    latest_event_timestamp: Optional[datetime]
+
+class PortEventDTO(BaseModel):
+    id: int
+    port_runtime_id: int
+    event_type: str
+    timestamp: datetime
+    pid: Optional[int]
+    process_name: Optional[str]
+    
+    class Config:
+        orm_mode = True
 

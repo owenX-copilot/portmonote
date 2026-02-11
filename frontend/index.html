@@ -174,18 +174,60 @@
                         </button>
                     </div>
 
+                    <!-- History View Overlay logic -->
                     <div class="flex-1 bg-black rounded border border-gray-800 p-4 font-mono text-xs overflow-auto relative group">
-                        <div v-if="!witrOutput && !witrLoading" class="absolute inset-0 flex items-center justify-center text-gray-700 pointer-events-none">
-                            <div class="text-center">
-                                <p class="mb-1 text-4xl opacity-20">🔍</p>
-                                <p>Click 'run witr' to inspect</p>
+                        <!-- Navigation Arrows -->
+                        <div v-if="historyList.length > 0" class="absolute top-1/2 -left-3 -translate-y-1/2 z-20" :class="{'hidden': historyIndex >= historyList.length - 1}">
+                             <button @click="historyIndex++" class="bg-gray-700 hover:bg-gray-600 rounded-full p-2 text-white shadow-lg border border-gray-600">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                             </button>
+                        </div>
+                        <div v-if="historyList.length > 0 && historyIndex > 0" class="absolute top-1/2 -right-3 -translate-y-1/2 z-20">
+                             <button @click="historyIndex--" class="bg-gray-700 hover:bg-gray-600 rounded-full p-2 text-white shadow-lg border border-gray-600">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                             </button>
+                        </div>
+                        
+                        <!-- Header info if browsing history -->
+                        <div v-if="historyIndex > 0" class="absolute top-2 left-2 right-2 bg-yellow-900/40 border border-yellow-700/50 rounded p-2 mb-2 text-center backdrop-blur-sm z-10">
+                            <span class="text-yellow-400 font-bold">Historical Snapshot ({{ historyIndex }}/{{historyList.length-1}})</span>
+                            <div class="text-xs text-gray-300">{{ formatDate(currentSnapshot.timestamp) }}</div>
+                             <div class="mt-1 flex justify-center gap-2">
+                                <span class="bg-black/50 px-2 py-0.5 rounded text-gray-400">{{ currentSnapshot.event_type }}</span>
                             </div>
                         </div>
-                        <div v-if="witrLoading" class="text-green-500 animate-pulse">
-                            root@server:~$ witr --port {{ editingPort.port }}<br>
-                            Analyzing traffic and process info...
+
+                        <!-- Content Render -->
+                        <div v-if="historyIndex === 0">
+                            <!-- Realtime Witr View -->
+                             <div v-if="!witrOutput && !witrLoading" class="absolute inset-0 flex items-center justify-center text-gray-700 pointer-events-none">
+                                <div class="text-center">
+                                    <p class="mb-1 text-4xl opacity-20">🔍</p>
+                                    <p>Click 'run witr' to inspect</p>
+                                </div>
+                            </div>
+                            <div v-if="witrLoading" class="text-green-500 animate-pulse">
+                                root@server:~$ witr --port {{ editingPort.port }}<br>
+                                Analyzing traffic and process info...
+                            </div>
+                            <pre v-if="witrOutput" class="whitespace-pre-wrap text-gray-300 leading-relaxed" v-html="formatWitrOutput(witrOutput)"></pre>
                         </div>
-                        <pre v-if="witrOutput" class="whitespace-pre-wrap text-gray-300 leading-relaxed" v-html="formatWitrOutput(witrOutput)"></pre>
+                        <div v-else class="mt-16 text-gray-300">
+                             <!-- Historical View -->
+                             <div class="space-y-3">
+                                <div class="p-2 border border-gray-700 rounded bg-gray-900/50">
+                                    <span class="block text-gray-500 text-[10px] uppercase">Process Name</span>
+                                    <span class="text-green-400 font-bold">{{ currentSnapshot.process_name || 'N/A' }}</span>
+                                </div>
+                                <div class="p-2 border border-gray-700 rounded bg-gray-900/50">
+                                    <span class="block text-gray-500 text-[10px] uppercase">PID</span>
+                                    <span class="text-blue-300 font-mono">{{ currentSnapshot.pid || 'N/A' }}</span>
+                                </div>
+                                <div class="p-4 text-center opacity-50 text-xs italic">
+                                    Detailed diagnostics (witr) are not stored for historical events.
+                                </div>
+                             </div>
+                        </div>
                     </div>
                     
                     <p class="mt-3 text-[10px] text-gray-600 text-center">
@@ -213,6 +255,18 @@
                 const witrOutput = ref(null);
                 const witrLoading = ref(false);
 
+                // History Logic
+                const historyList = ref([]);
+                const historyIndex = ref(0); // 0 = latest/realtime
+
+                const currentSnapshot = computed(() => {
+                    if (historyIndex.value === 0 || historyList.value.length === 0) return null;
+                    // historyList is sorted desc (0 is latest)
+                    // But our index 0 is "Live View", index 1 is "Latest Event", index 2 is "Previous Event"
+                    // So historyIndex 1 maps to historyList[0]
+                    return historyList.value[historyIndex.value - 1]; 
+                });
+
                 const sortedPorts = computed(() => {
                     return [...ports.value].sort((a, b) => {
                         // Priority Logic:
@@ -237,14 +291,24 @@
                             if (risk === 'trusted') s += 1000;
                             else if (risk === 'expected') s += 100;
 
-                            // 4. Active > Disappeared (within same tier)
-                            if (p.current_state === 'active') s += 50;
-
+                            // 4. Tie-breaker: Port number (lower is better usually, or use uptime)
                             return s;
                         };
                         return score(b) - score(a);
                     });
                 });
+
+                const fetchHistory = async (port) => {
+                    historyList.value = [];
+                    historyIndex.value = 0; // Reset to latest
+                    try {
+                        const url = `/history?host_id=${port.host_id}&protocol=${port.protocol}&port=${port.port}`;
+                        const res = await fetch(url);
+                        if(res.ok) {
+                            historyList.value = await res.json();
+                        }
+                    } catch(e) { console.error("History fetch failed", e); }
+                };
 
                 const fetchData = async () => {
                     loading.value = true;
@@ -308,6 +372,12 @@
                     const status = original.derived_status;
                     const risk = original.risk_level;
                     const isDisappeared = original.current_state === 'disappeared';
+                    const lastEvt = original.latest_event_type;
+
+                    // Warning Flash for Process Change (Overrides everything except Disappeared maybe?)
+                    if (lastEvt === 'process_change') {
+                        return 'border-yellow-500 bg-yellow-900/20 animate-pulse ring-1 ring-yellow-500';
+                    }
                     
                     // Base Colors
                     let base = '';
@@ -329,6 +399,9 @@
                     const status = original.derived_status;
                     const risk = original.risk_level;
                     const isDisappeared = original.current_state === 'disappeared';
+                    const lastEvt = original.latest_event_type;
+
+                    if (lastEvt === 'process_change') return 'bg-yellow-900/40 text-yellow-400 border border-yellow-700/50';
 
                     if (status === 'suspicious' || risk === 'suspicious') return 'bg-red-900/30 text-red-400';
                     if (risk === 'trusted') return isDisappeared ? 'bg-red-900/20 text-red-400' : 'bg-green-900/30 text-green-400';
@@ -341,6 +414,9 @@
                     const status = original.derived_status;
                     const risk = original.risk_level;
                     const isDisappeared = original.current_state === 'disappeared';
+                    const lastEvt = original.latest_event_type;
+
+                    if (lastEvt === 'process_change') return 'bg-yellow-500 animate-bounce';
 
                     if (isDisappeared) return 'bg-red-500 animate-ping'; // All disappeared ping red
 
@@ -361,6 +437,7 @@
                 const editNote = (port) => {
                     editingPort.value = port;
                     witrOutput.value = null; // Reset witr
+                    fetchHistory(port); 
                     editForm.value = {
                         title: port.title || '',
                         description: port.description || '',
@@ -435,7 +512,8 @@
                     ports, sortedPorts, loading, fetchData,
                     statusBorder, statusBadge, statusDot, formatDate,
                     editNote, editingPort, editForm, saveNote, saving, closeModal, togglePin,
-                    runWitr, witrOutput, witrLoading, formatWitrOutput
+                    runWitr, witrOutput, witrLoading, formatWitrOutput,
+                    historyList, historyIndex, currentSnapshot
                 }
             }
         }).mount('#app');
