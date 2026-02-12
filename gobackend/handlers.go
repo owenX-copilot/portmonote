@@ -39,7 +39,7 @@ func InitHandlers(r *gin.Engine) {
 
 	// Routes
 	r.GET("/", handleIndex)
-	r.GET("/favicon.ico", func(c *gin.Context) { c.File("../backend/favicon.ico") }) // Use existing
+	r.GET("/favicon.ico", handleFavicon)
 
 	r.GET("/ports", getPorts)
 	r.GET("/history", getHistory)
@@ -50,12 +50,30 @@ func InitHandlers(r *gin.Engine) {
 	r.GET("/inspect/:port", runWitr)
 }
 
-func handleIndex(c *gin.Context) {
-	// Read index.html
-	content, err := os.ReadFile("../frontend/index.html")
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Error loading frontend")
+func handleFavicon(c *gin.Context) {
+	// Try local folder first (Deployment)
+	if _, err := os.Stat("frontend/favicon.ico"); err == nil {
+		c.File("frontend/favicon.ico")
 		return
+	}
+	// Try parent folder (Dev)
+	if _, err := os.Stat("../backend/favicon.ico"); err == nil {
+		c.File("../backend/favicon.ico")
+		return
+	}
+	c.Status(http.StatusNotFound)
+}
+
+func handleIndex(c *gin.Context) {
+	// Try reading from current directory "frontend/index.html" (Deployment)
+	content, err := os.ReadFile("frontend/index.html")
+	if err != nil {
+		// Fallback: Try reading from parent directory "../frontend/index.html" (Dev)
+		content, err = os.ReadFile("../frontend/index.html")
+		if err != nil {
+			c.String(http.StatusInternalServerError, "Error loading frontend: index.html not found in 'frontend/' or '../frontend/'")
+			return
+		}
 	}
 
 	// Inject Token
