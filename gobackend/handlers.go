@@ -51,29 +51,37 @@ func InitHandlers(r *gin.Engine) {
 }
 
 func handleFavicon(c *gin.Context) {
-	// Try local folder first (Deployment)
-	if _, err := os.Stat("frontend/favicon.ico"); err == nil {
-		c.File("frontend/favicon.ico")
+	// 1. Try embedded
+	data, err := frontendFS.ReadFile("frontend/favicon.ico")
+	if err == nil {
+		c.Data(http.StatusOK, "image/x-icon", data)
 		return
 	}
-	// Try parent folder (Dev)
-	if _, err := os.Stat("../backend/favicon.ico"); err == nil {
-		c.File("../backend/favicon.ico")
+	// 2. Try current folder
+	if _, err := os.Stat("frontend/favicon.ico"); err == nil {
+		c.File("frontend/favicon.ico")
 		return
 	}
 	c.Status(http.StatusNotFound)
 }
 
 func handleIndex(c *gin.Context) {
-	// Try reading from current directory "frontend/index.html" (Deployment)
-	content, err := os.ReadFile("frontend/index.html")
+	var content []byte
+	var err error
+
+	// Priority 1: Embedded Filesystem (Production/Single Binary)
+	// Note: embed.FS uses forward slashes, even on Windows
+	content, err = frontendFS.ReadFile("frontend/index.html")
+
+	// Priority 2: External File (if embedded fails or user wants to override)
+	// Check current directory "frontend/index.html"
 	if err != nil {
-		// Fallback: Try reading from parent directory "../frontend/index.html" (Dev)
-		content, err = os.ReadFile("../frontend/index.html")
-		if err != nil {
-			c.String(http.StatusInternalServerError, "Error loading frontend: index.html not found in 'frontend/' or '../frontend/'")
-			return
-		}
+		content, err = os.ReadFile("frontend/index.html")
+	}
+
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Error loading frontend: index.html not found in binary or 'frontend/' folder.")
+		return
 	}
 
 	// Inject Token
