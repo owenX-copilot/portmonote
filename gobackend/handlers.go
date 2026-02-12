@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -115,6 +116,11 @@ func getPorts(c *gin.Context) {
 			Cmdline:           r.Cmdline,
 			RiskLevel:         "unknown",
 			DerivedStatus:     "unknown",
+		}
+		// Calculate UptimeHuman if active
+		if r.CurrentState == "active" {
+			duration := time.Since(r.FirstSeenAt)
+			item.UptimeHuman = formatDuration(duration)
 		}
 		mergedMap[key] = item
 	}
@@ -349,4 +355,18 @@ func calculateStatus(item *MergedPortItem) {
 		// ghost logic
 		item.DerivedStatus = "ghost"
 	}
+}
+
+func formatDuration(d time.Duration) string {
+	days := int(d.Hours()) / 24
+	hours := int(d.Hours()) % 24
+	minutes := int(d.Minutes()) % 60
+
+	if days > 0 {
+		return fmt.Sprintf("%dd %dh %dm", days, hours, minutes)
+	}
+	if hours > 0 {
+		return fmt.Sprintf("%dh %dm", hours, minutes)
+	}
+	return fmt.Sprintf("%dm", minutes)
 }
