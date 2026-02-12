@@ -129,6 +129,23 @@
                 
                 <!-- Left: Edit Form -->
                 <div class="p-6 w-full md:w-1/2 overflow-y-auto border-b md:border-b-0 md:border-r border-gray-700">
+                    
+                    <!-- Process Change Warning Banner -->
+                    <div v-if="editingPort.latest_event_type === 'process_change'" class="mb-6 bg-yellow-900/30 border border-yellow-600/30 p-3 rounded flex items-center justify-between gap-3 animate-pulse ring-1 ring-yellow-500/20">
+                        <div class="flex items-center gap-3">
+                            <div class="text-yellow-500">
+                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                            </div>
+                            <div>
+                                <h4 class="text-xs font-bold text-yellow-400 uppercase tracking-wide">Security Alert</h4>
+                                <p class="text-[10px] text-yellow-200/70">Process changed since last scan.</p>
+                            </div>
+                        </div>
+                        <button @click="acknowledgeWarning" class="whitespace-nowrap text-[10px] bg-yellow-600 hover:bg-yellow-500 text-black font-bold px-3 py-1 rounded transition shadow-lg shadow-yellow-900/50">
+                            Dismiss
+                        </button>
+                    </div>
+
                     <h3 class="text-xl font-bold mb-4 flex justify-between items-center gap-2">
                          <span><span class="text-blue-400">#</span> Memory</span>
                          <span class="text-xs text-green-400 font-mono transition-opacity duration-500" :class="saving ? 'opacity-100' : 'opacity-0'">
@@ -572,6 +589,23 @@
                     }
                 };
 
+                const acknowledgeWarning = async () => {
+                    if (!editingPort.value) return;
+                    const p = editingPort.value;
+                    try {
+                        const url = `/acknowledge?host_id=${p.host_id}&protocol=${p.protocol}&port=${p.port}`;
+                        const res = await fetch(url, {
+                             method: 'POST',
+                             headers: { 'X-CSRF-Token': window.PORTMONOTE_CSRF_TOKEN }
+                        });
+                        if(res.ok) {
+                            // Update local state immediately to hide banner and stop flashing
+                            p.latest_event_type = 'acknowledged';
+                            fetchData(); // Refresh bg list
+                        }
+                    } catch(e) { console.error("Ack failed", e); }
+                };
+
                 const saveNote = async () => {
                     if (!editingPort.value) return;
                     saving.value = true;
@@ -618,6 +652,7 @@
                     statusBorder, statusBadge, statusDot, formatDate,
                     editNote, editingPort, editForm, saveNote, saving, closeModal, togglePin,
                     initiateDelete, confirmDelete, deletingPort, deleteInput, isDeleting,
+                    acknowledgeWarning,
                     runWitr, witrOutput, witrLoading, formatWitrOutput,
                     historyList, historyIndex, currentSnapshot
                 }

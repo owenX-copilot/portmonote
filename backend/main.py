@@ -312,5 +312,30 @@ def delete_port(host_id: str, protocol: str, port: int, db: Session = Depends(ge
     db.commit()
     return {"status": "deleted"}
 
+@app.post("/acknowledge", dependencies=[Depends(verify_csrf)])
+def acknowledge_port_warning(host_id: str, protocol: str, port: int, db: Session = Depends(get_db)):
+    """
+    Inserts an ACKNOWLEDGED event to clear the 'process_change' warning status.
+    """
+    runtime = db.query(models.PortRuntime).filter(
+        models.PortRuntime.host_id == host_id,
+        models.PortRuntime.protocol == protocol,
+        models.PortRuntime.port == port
+    ).first()
+
+    if not runtime:
+        raise HTTPException(status_code=404, detail="Port runtime not found")
+
+    # Add Acknowledgement Event
+    event = models.PortEvent(
+        port_runtime_id=runtime.id,
+        event_type=models.EventTypeEnum.ACKNOWLEDGED.value,
+        pid = runtime.current_pid,
+        process_name = runtime.process_name
+    )
+    db.add(event)
+    db.commit()
+    return {"status": "acknowledged"}
+
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=2008, reload=True)

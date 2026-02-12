@@ -17,6 +17,7 @@ class EventTypeEnum(str, enum.Enum):
     ALIVE = "alive"
     DISAPPEARED = "disappeared"
     PROCESS_CHANGE = "process_change"
+    ACKNOWLEDGED = "acknowledged"
 
 class RiskLevelEnum(str, enum.Enum):
     TRUSTED = "trusted"
