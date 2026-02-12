@@ -291,6 +291,30 @@ func runWitr(c *gin.Context) {
 		output += "\nError: " + err.Error()
 	}
 
+	// Save to History (DB)
+	// 1. Find active runtime for this port (HostID=local, Protocol=?, Port=?)
+	// Note: runWitr assumes TCP/UDP? Witr tool usually autodetects or we assume from context.
+	// Since runWitr param is only :port, we might have ambiguity if same port on tcp/udp.
+	// But usually it's unique enough or we pick the first active one.
+	portNum, _ := strconv.Atoi(portStr)
+	var runtime PortRuntime
+	// Try to find the active runtime associated with this port
+	if err := DB.Where("host_id = ? AND port = ? AND current_state = ?", "local", portNum, "active").First(&runtime).Error; err == nil {
+		// Create Event
+		evt := PortEvent{
+			PortRuntimeID: runtime.ID,
+			EventType:     string(EventDiagnosis),
+			Timestamp:     time.Now(),
+			PID:           runtime.CurrentPID,
+			ProcessName:   runtime.ProcessName,
+			WitrOutput:    output,
+		}
+		DB.Create(&evt)
+	} else {
+		// Log error or ignore if not found (maybe ghost port?)
+		log.Printf("Could not log witr event for port %d: %v", portNum, err)
+	}
+
 	c.JSON(http.StatusOK, gin.H{"output": output, "error": err != nil})
 }
 

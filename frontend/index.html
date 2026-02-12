@@ -246,7 +246,11 @@
                                     <span class="block text-gray-500 text-[10px] uppercase">PID</span>
                                     <span class="text-blue-300 font-mono">{{ currentSnapshot.pid || 'N/A' }}</span>
                                 </div>
-                                <div class="p-4 text-center opacity-50 text-xs italic">
+                                <div v-if="currentSnapshot.witr_output">
+                                     <div class="mb-2 text-xs text-gray-400">Recorded Diagnostics:</div>
+                                     <pre class="whitespace-pre-wrap text-gray-300 leading-relaxed text-xs font-mono bg-black/30 p-2 rounded" v-html="formatWitrOutput(currentSnapshot.witr_output)"></pre>
+                                </div>
+                                <div v-else class="p-4 text-center opacity-50 text-xs italic">
                                     Detailed diagnostics (witr) are not stored for historical events.
                                 </div>
                              </div>

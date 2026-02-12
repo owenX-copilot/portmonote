@@ -26,6 +26,7 @@ const (
 	EventDisappeared   EventType = "disappeared"
 	EventProcessChange EventType = "process_change"
 	EventAcknowledged  EventType = "acknowledged"
+	EventDiagnosis     EventType = "diagnosis" // New type for witr
 )
 
 type RiskLevel string
@@ -72,6 +73,7 @@ type PortEvent struct {
 	Timestamp     time.Time `json:"timestamp"`
 	PID           int       `json:"pid"`
 	ProcessName   string    `json:"process_name"`
+	WitrOutput    string    `json:"witr_output,omitempty"` // Store diagnosis result
 }
 
 func (PortEvent) TableName() string {
