@@ -83,7 +83,7 @@ def export_data():
             "description": n.description,
             "owner": n.owner,
             "risk_level": n.risk_level,
-            "is_pinned": n.is_pinned
+            "is_pinned": bool(n.is_pinned) if n.is_pinned is not None else False
         })
 
     # 3. Export Events (Limit to recent ones if too big?)
