@@ -10,8 +10,8 @@ import (
 
 func main() {
 	// 1. Initialize DB
-	// Point to the potentially existing DB in the project root
-	InitDB("../portmonote.db")
+	// Try looking for DB in current dir first (Deployment), then parent (Dev)
+	InitDB("portmonote.db")
 
 	// 2. Start Collector (Background)
 	go func() {
