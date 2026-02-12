@@ -142,7 +142,7 @@ func main() {
 
 				runtimes = append(runtimes, PortRuntime{
 					ID:                 r.ID,
-					HostID:             r.HostID,
+					HostID:             "local", // Force unify to "local"
 					Protocol:           r.Protocol,
 					Port:               r.Port,
 					FirstSeenAt:        r.FirstSeenAt.Time,
@@ -164,6 +164,10 @@ func main() {
 		}
 
 		if len(data.Notes) > 0 {
+			// Unify notes host_id to "local" too
+			for i := range data.Notes {
+				data.Notes[i].HostID = "local"
+			}
 			if err := tx.CreateInBatches(data.Notes, 100).Error; err != nil {
 				return err
 			}
