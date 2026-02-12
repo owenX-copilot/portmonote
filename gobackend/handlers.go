@@ -51,13 +51,7 @@ func InitHandlers(r *gin.Engine) {
 }
 
 func handleFavicon(c *gin.Context) {
-	// 1. Try embedded
-	data, err := frontendFS.ReadFile("frontend/favicon.ico")
-	if err == nil {
-		c.Data(http.StatusOK, "image/x-icon", data)
-		return
-	}
-	// 2. Try current folder
+	// Try current folder
 	if _, err := os.Stat("frontend/favicon.ico"); err == nil {
 		c.File("frontend/favicon.ico")
 		return
@@ -69,14 +63,12 @@ func handleIndex(c *gin.Context) {
 	var content []byte
 	var err error
 
-	// Priority 1: Embedded Filesystem (Production/Single Binary)
-	// Note: embed.FS uses forward slashes, even on Windows
-	content, err = frontendFS.ReadFile("frontend/index.html")
+	// Read from external file only
+	content, err = os.ReadFile("frontend/index.html")
 
-	// Priority 2: External File (if embedded fails or user wants to override)
-	// Check current directory "frontend/index.html"
 	if err != nil {
-		content, err = os.ReadFile("frontend/index.html")
+		c.String(http.StatusNotFound, "Frontend not found")
+		return
 	}
 
 	if err != nil {
